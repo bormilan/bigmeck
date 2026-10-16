@@ -1,0 +1,9 @@
+_build/
+_checkouts/
+.rebar3/
+doc/
+test/logs/
+*.beam
+/erl_crash.dump
+/rebar3.crashdump
+.DS_Store
