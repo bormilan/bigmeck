@@ -12,7 +12,9 @@ is planned and is not implemented yet.
 
 ## How it works
 
-- `bigmeck:new/0` starts one owner process with one shared ETS table.
+- `bigmeck:new(Module)` initializes the module with
+  `meck:new(Module, [passthrough])` and starts the shared ETS owner if needed.
+  Additional modules reuse the same owner and table.
 - `bigmeck:expect(Module, Function, Arity, ReturnValue)` reads the registering
   process's request ID and stores a literal return value under
   `{RequestId, Module, Function, Arity}`. It installs a shared Meck callback for
@@ -20,8 +22,8 @@ is planned and is not implemented yet.
 - When that function is called, the callback reads the calling process's ID and
   looks up its return value. An unmatched call passes through with its original
   arguments. The callback runs in the caller, independently of the ETS owner.
-- `bigmeck:unload/0` stops the owner and destroys the table. The caller invokes
-  it after the test run and manages Meck module setup and teardown separately.
+- `bigmeck:unload/0` unloads the modules initialized through BIGMeck, stops the
+  owner, and destroys the table. The caller invokes it after the test run.
 
 Repeating `expect/4` for the same key replaces its value. Expectations persist
 until replaced or the table is destroyed, so unrelated test cases should use
@@ -32,9 +34,8 @@ distinct request IDs. Processes sharing an ID share its expectations.
 This example illustrates the planned API; it is not runnable yet.
 
 ```erlang
-%% Shared setup: keep the Meck creator alive for the test run.
-bigmeck:new().
-ok = meck:new(my_service, [passthrough]).
+%% Shared setup: keep this process alive for the test run.
+ok = bigmeck:new(my_service).
 
 %% Assume my_service:fun_a/0 normally returns original_value.
 put('x-request-id', <<"request-a">>).
@@ -49,20 +50,20 @@ original_value = my_service:fun_a().
 erase('x-request-id').
 original_value = my_service:fun_a().
 
-%% Caller-managed teardown after the test run.
-ok = meck:unload(my_service).
+%% Unload BIGMeck's modules and shared storage after the test run.
 ok = bigmeck:unload().
 ```
 
 `expect/4` returns `ok` on success and raises errors for a missing/non-binary
-request ID, invalid target, or module not initialized with Meck. Missing ETS
+request ID, invalid target, or uninitialized module. Missing ETS
 storage also raises an error, including in installed callbacks. An unexpected
 owner exit loses the table; the caller can monitor the owner to fail its test
 fixture. There is no automatic recovery in the first version.
 
-Use Meck directly for module setup, unloading, history, and validation. Its mock
-processes are linked to their creator by default; callers using `no_link` manage
-their teardown explicitly. History and validation remain shared across requests.
+Use `bigmeck:new/1` and `bigmeck:unload/0` for setup and teardown. Meck's mock
+processes are linked to their creator by default, so the shared setup process
+should stay alive for the test run. Use Meck directly for history and validation;
+these remain shared across requests.
 Expectation changes for a BIGMeck-managed function should go through BIGMeck,
 since direct `meck:expect` or `meck:delete` calls can replace its lookup callback.
 
