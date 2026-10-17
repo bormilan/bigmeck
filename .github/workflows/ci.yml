@@ -9,12 +9,19 @@ permissions:
 
 jobs:
   check:
-    runs-on: ubuntu-latest
+    name: Check (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
     steps:
       - uses: actions/checkout@v7
       - uses: erlef/setup-beam@v1
         with:
           otp-version: '28'
           rebar3-version: '3.27.0'
+      - name: Check formatting
+        run: rebar3 fmt --check
       - name: Compile, test, and lint
-        run: rebar3 check
+        run: rebar3 do compile, eunit, lint

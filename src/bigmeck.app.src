@@ -1,8 +1,8 @@
 {application, bigmeck, [
-    {description, "Bigmeck Erlang library"},
+    {description, "Behaviourally Isolated Global Meck"},
     {vsn, "0.1.0"},
     {registered, []},
-    {applications, [kernel, stdlib]},
+    {applications, [kernel, stdlib, meck]},
     {env, []},
     {modules, []},
     {links, [{"GitHub", "https://github.com/bormilan/bigmeck"}]}
