@@ -24,4 +24,4 @@ jobs:
       - name: Check formatting
         run: rebar3 fmt --check
       - name: Compile, test, and lint
-        run: rebar3 do compile, eunit, lint
+        run: rebar3 do "compile,eunit,lint"
