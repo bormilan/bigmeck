@@ -1,57 +1,80 @@
 # BIGMeck development roadmap
 
-Build **Behaviourally Isolated Global Meck** as a thin wrapper around Meck.
-Keep the first implementation in `bigmeck.erl`, with one shared ETS owner and
-literal return values selected by binary request IDs under `'x-request-id'`.
+The first request-scoped implementation is present, with ten focused BIGMeck
+tests alongside the three existing Meck tests. Release checks are tracked below.
 
-Milestone [0.0.1](https://github.com/bormilan/bigmeck/milestone/1) has two
-implementation tasks. Start each with a small failing test, implement the minimum
-behavior, and refactor. Keep tests focused and run `rebar3 check` on OTP 28.
+Keep development to one implementation task in milestone
+[0.0.1](https://github.com/bormilan/bigmeck/milestone/1), with the implementation in
+`bigmeck.erl`. Start with one small failing test and add focused cases only as the
+behavior needs them.
 
-## 1. Meck integration
+## Agreed behavior
 
-- [x] Add Meck as a runtime dependency and lock its version.
-- [x] Add basic EUnit coverage for expectations, passthrough, unloading, and
-      passthrough's requirement for retained target-module debug information.
-- [x] Configure erlfmt, compilation with warnings as errors, EUnit, and lint.
-- [x] Configure CI for Ubuntu, Windows, and macOS on OTP 28.
+- `bigmeck:expect(Module, Function, Arity, ReturnValue)` reads the registering
+  process's binary ID under the atom `'x-request-id'`, ensures the shared ETS
+  table exists, and stores the literal return under
+  `{RequestId, Module, Function, Arity}`. It returns `ok` on success.
+- The first expectation starts a plain process that creates and owns the table.
+  All modules, functions, and requests reuse that one owner and table. The owner
+  only keeps ETS alive; reads and writes happen directly in calling processes.
+  There is no `bigmeck:new` API or `gen_server`.
+- Use Meck's normal setup and options through `meck:new/2` when needed. Callback
+  installation uses `meck:expect`, preserving its implicit passthrough setup for
+  a module that has not been initialized explicitly.
+- A shared Meck callback reads the calling process's request ID and looks up its
+  return value directly in ETS. Unmatched or unusable IDs pass through with the
+  original arguments and exceptions.
+- Repeating an expectation replaces that key's value. Entries remain until
+  replaced or the owner exits. Unrelated test cases use distinct IDs.
+- The table stores only expected returns. There is no module registry or
+  callback-marker storage, and BIGMeck does not automatically unload Meck modules.
+- After the run, `bigmeck:unload/0` only stops the owner and ETS destroys its
+  table. The library does not track suites, drain calls, or perform per-request
+  cleanup.
+- Unexpected owner loss is a fixture failure. An installed callback raises an
+  explicit error if storage is missing. There is no background restart or
+  recovery of lost expectations; lazy initialization creates an empty table.
+- Registration errors raise exceptions. Prefer Meck's existing errors where
+  applicable.
+- The first version supports arities 0–20, as agreed, using `erl_eval` to create
+  callbacks without generating additional modules.
 
-## 2. Shared storage lifecycle — issue #6
+## 1. Existing foundation
 
-Tracked in [#6](https://github.com/bormilan/bigmeck/issues/6).
+- [x] Meck dependency and lockfile.
+- [x] Basic tests for Meck setup, expectations, passthrough, unloading, and retained
+      target-module debug information.
+- [x] Formatting, compilation with warnings as errors, EUnit, and lint.
+- [x] CI matrix for Ubuntu, Windows, and macOS on OTP 28.
+- [x] Add a Dialyzer check to the CI matrix.
+- [x] Require 100% line coverage in CI, including tests for owner startup races,
+      failure, and timeouts.
 
-- [ ] Write a failing lifecycle test, then implement `bigmeck:new/0` to start one
-      owner and one ETS table, returning only when storage is ready.
-- [ ] Keep the owner independent of individual test processes. Make its PID
-      available for caller monitoring and document repeated-start behavior.
-- [ ] Implement `bigmeck:unload/0` to stop the owner and await table removal;
-      already-stopped calls are harmless, and fresh startup has empty storage.
-- [ ] Document caller-managed setup and teardown after the test run. Keep Meck
-      module management separate; BIGMeck does not track suite completion.
+## 2. Request-scoped expectations and shared storage — issue #1
 
-## 3. Request-scoped expectations — issue #1
+Tracked in [#1](https://github.com/bormilan/bigmeck/issues/1). Storage setup,
+request-scoped dispatch, and stopping the owner belong to this single task.
 
-Tracked in [#1](https://github.com/bormilan/bigmeck/issues/1), after #6.
+- [x] First, write and run a failing isolation test: request A gets its value
+      while B and a caller without an ID get the original result. No separate
+      BIGMeck setup call is needed.
+- [x] Implement lazy shared ETS startup inside `expect/4`. One plain owner
+      creates the table; callers wait until it is ready and reuse it across all
+      targets. Keep the table alive independently of individual test processes.
+- [x] Store request-specific literal returns and install a shared Meck callback
+      for each function/arity. Use direct ETS lookup, replacement, and passthrough
+      without metadata entries in ETS.
+- [x] Preserve Meck's normal setup behavior and keep concurrent registrations
+      safe. Use the agreed 0–20 argument callback builder.
+- [x] Add the stop-only `unload/0` helper. Owner exit automatically destroys ETS.
+- [x] Add focused cases as needed for replacement, target separation, arguments,
+      concurrency, validation, storage lifetime, and table removal. Keep tests
+      small and original function exceptions intact.
 
-- [ ] Start with a failing isolation test: request A receives its value while B
-      and a caller without an ID use the original function.
-- [ ] Implement `expect/4` with entries keyed by request ID and module/function/
-      arity, plus a generic Meck callback that reads the caller's ID and ETS.
-      Require caller-created Meck mocks and confirm callback installation before
-      publishing the first value.
-- [ ] Support concurrent registration, multiple targets, literal return values,
-      and replacement of an existing value. Retain values until shared teardown.
-- [ ] Validate registrations and preserve original arguments and exceptions
-      during passthrough. Missing storage raises an explicit error; cover owner
-      failure with a small test.
-- [ ] Update the README with tested examples and the final API return values.
+## First release
 
-## 4. First release
-
-- [ ] Confirm formatting, compilation, EUnit, and lint pass on all three CI
-      platforms with OTP 28.
-- [ ] Review the documented request-ID propagation and Meck requirements.
+- [x] Run `rebar3 check` locally on OTP 28.
+- [ ] Verify CI on Ubuntu, Windows, and macOS after pushing.
+- [x] Replace proposed README examples with tested usage.
+- [x] Review request-ID propagation and Meck requirements.
 - [ ] Choose a license and prepare package metadata and release notes.
-
-Per-request cleanup, suite coordination, automatic recovery, argument matchers,
-callbacks as return specifications, and sequences are outside the first version.

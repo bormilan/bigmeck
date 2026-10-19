@@ -6,39 +6,40 @@ BIGMeck is a thin wrapper that selects mocked return values using the calling
 process's `x-request-id`. Calls carrying a matching ID receive the configured
 value; other calls use the original function.
 
-**Status:** early development. The repository contains the library skeleton,
-Meck dependency, development tools, and basic Meck tests. The BIGMeck API below
-is planned and is not implemented yet.
+**Status:** early development. Request-scoped expectations and the stop-only
+unload helper are implemented. The first version supports functions with
+0–20 arguments, using Erlang's interpreter to construct Meck callbacks.
 
 ## How it works
 
-- `bigmeck:new(Module)` initializes the module with
-  `meck:new(Module, [passthrough])` and starts the shared ETS owner if needed.
-  Additional modules reuse the same owner and table.
 - `bigmeck:expect(Module, Function, Arity, ReturnValue)` reads the registering
-  process's request ID and stores a literal return value under
-  `{RequestId, Module, Function, Arity}`. It installs a shared Meck callback for
-  the target function; later registrations update ETS.
+  process's request ID and ensures the shared ETS table exists. The first
+  expectation starts a plain process that creates and owns the table. All
+  modules and functions reuse that owner and table; reads and writes happen
+  directly in calling processes. No `bigmeck:new` call is needed.
+- It stores a literal return value under `{RequestId, Module, Function, Arity}`
+  and installs a shared Meck callback for the target function/arity. Later
+  registrations replace or add values in ETS.
 - When that function is called, the callback reads the calling process's ID and
   looks up its return value. An unmatched call passes through with its original
   arguments. The callback runs in the caller, independently of the ETS owner.
-- `bigmeck:unload/0` unloads the modules initialized through BIGMeck, stops the
-  owner, and destroys the table. The caller invokes it after the test run.
+- `bigmeck:unload/0` only stops the plain owner process after the test run.
+  ETS automatically destroys its table when that process exits.
 
 Repeating `expect/4` for the same key replaces its value. Expectations persist
 until replaced or the table is destroyed, so unrelated test cases should use
 distinct request IDs. Processes sharing an ID share its expectations.
 
-## Intended usage
+## Usage
 
-This example illustrates the planned API; it is not runnable yet.
+Assume `my_service:fun_a/0` normally returns `original_value`.
 
 ```erlang
 %% Shared setup: keep this process alive for the test run.
-ok = bigmeck:new(my_service).
+ok = meck:new(my_service, [passthrough]).
 
-%% Assume my_service:fun_a/0 normally returns original_value.
 put('x-request-id', <<"request-a">>).
+%% The first expectation also initializes shared ETS storage.
 ok = bigmeck:expect(my_service, fun_a, 0, mocked_value).
 mocked_value = my_service:fun_a().
 
@@ -50,22 +51,37 @@ original_value = my_service:fun_a().
 erase('x-request-id').
 original_value = my_service:fun_a().
 
-%% Unload BIGMeck's modules and shared storage after the test run.
+%% After the test run, stop the owner so ETS discards its table.
 ok = bigmeck:unload().
 ```
 
 `expect/4` returns `ok` on success and raises errors for a missing/non-binary
-request ID, invalid target, or uninitialized module. Missing ETS
-storage also raises an error, including in installed callbacks. An unexpected
-owner exit loses the table; the caller can monitor the owner to fail its test
-fixture. There is no automatic recovery in the first version.
+request ID, invalid target, or a failure from Meck. An installed callback raises
+an error if ETS storage is missing. An unexpected owner exit loses its table;
+the fixture should treat that as a failure. There is no background restart or
+recovery of lost expectations; lazy initialization creates an empty table.
 
-Use `bigmeck:new/1` and `bigmeck:unload/0` for setup and teardown. Meck's mock
-processes are linked to their creator by default, so the shared setup process
-should stay alive for the test run. Use Meck directly for history and validation;
-these remain shared across requests.
+Use `meck:new/2` for explicit shared setup and custom options. If it is omitted,
+BIGMeck preserves `meck:expect`'s implicit passthrough setup. Either way, keep
+the process that creates the Meck mock alive while it is in use. For parallel
+tests, initialize each shared Meck module once in a fixture before starting
+the tests.
+
+The named, public ETS table stores only `{RequestId, Module, Function, Arity}`
+keys and literal return values. Parallel tests in the same Erlang VM share it;
+the owner outlives the process that first registered an expectation. There is
+no module registry, callback-marker storage, per-request cleanup, or automatic
+Meck unloading. Stopping the ETS owner leaves
+Meck's normal module lifecycle unchanged. Its mock processes are linked to their
+creator by default, so keep the shared setup process alive for the test run.
+Use Meck directly for history and validation; these remain shared across requests.
 Expectation changes for a BIGMeck-managed function should go through BIGMeck,
 since direct `meck:expect` or `meck:delete` calls can replace its lookup callback.
+
+Missing or non-binary IDs during registration raise `{invalid_request_id, Value}`.
+Invalid arguments, including arities outside 0–20, raise `badarg`. A callback
+whose ETS table has been lost raises `bigmeck_storage_unavailable`; an empty
+lookup in a live table passes through normally.
 
 ## Request context
 
@@ -91,8 +107,19 @@ rebar3 fmt --check  # Check formatting without changing files
 rebar3 compile      # Compile; warnings fail the build
 rebar3 eunit        # Run EUnit tests
 rebar3 lint         # Run rebar3_lint
-rebar3 check        # Run all checks above without changing files
+rebar3 check        # Run formatting, compilation, EUnit, and lint
+rebar3 dialyzer     # Check types with Dialyzer
 ```
 
-CI runs formatting, compilation, EUnit, and lint on Ubuntu, Windows, and macOS.
+Run coverage with the same 100% line-coverage requirement as CI:
+
+```sh
+rebar3 eunit --cover
+rebar3 as test cover --min_coverage 100 --verbose
+```
+
+The HTML report is written to `_build/test/cover/index.html`.
+
+CI runs formatting, compilation, EUnit, lint, Dialyzer, and the 100% coverage
+check on Ubuntu, Windows, and macOS.
 See the [development roadmap](docs/roadmap.md) for the implementation plan.
