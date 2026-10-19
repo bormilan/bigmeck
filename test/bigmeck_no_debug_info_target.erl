@@ -2,6 +2,7 @@
 
 -export([fun_a/0]).
 
--spec fun_a() -> original.
+-spec fun_a() -> Return when
+    Return :: original.
 fun_a() ->
     original.

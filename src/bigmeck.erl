@@ -21,7 +21,12 @@ Register a literal return value for the current request ID and target.
 Supports arities 0 through 20. The first registration lazily starts shared ETS
 storage. Calls without a matching entry pass through to the original function.
 """.
--spec expect(module(), atom(), 0..20, term()) -> ok.
+-spec expect(Module, Function, Arity, ReturnValue) -> Return when
+    Module :: module(),
+    Function :: atom(),
+    Arity :: 0..20,
+    ReturnValue :: term(),
+    Return :: ok.
 expect(Module, Function, Arity, ReturnValue) when
     is_atom(Module), is_atom(Function), is_integer(Arity), Arity >= 0, Arity =< 20
 ->
@@ -37,7 +42,8 @@ expect(_Module, _Function, _Arity, _ReturnValue) ->
     error(badarg).
 
 -doc "Stop the ETS owner and discard its table, leaving Meck mocks untouched.".
--spec unload() -> ok.
+-spec unload() -> Return when
+    Return :: ok.
 unload() ->
     case ets:info(?TABLE, owner) of
         undefined ->
