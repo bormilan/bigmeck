@@ -69,7 +69,10 @@ ensure_table() ->
     case ets:whereis(?TABLE) of
         undefined ->
             Caller = self(),
+            % ETS deletes a table when its owner exits, so a separate process
+            % keeps shared expectations alive after this caller exits.
             {Owner, Monitor} = spawn_monitor(fun() -> own_table(Caller) end),
+            % Spawning is asynchronous; wait for the table before using it.
             await_table(Owner, Monitor, 5000);
         Table ->
             Table
