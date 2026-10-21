@@ -23,5 +23,11 @@ jobs:
           rebar3-version: '3.27.0'
       - name: Check formatting
         run: rebar3 fmt --check
-      - name: Compile, test, and lint
-        run: rebar3 do "compile,eunit,lint"
+      - name: Compile and lint
+        run: rebar3 do "compile,lint"
+      - name: Check types with Dialyzer
+        run: rebar3 dialyzer
+      - name: Test with coverage
+        run: rebar3 eunit --cover
+      - name: Require 100% coverage
+        run: rebar3 as test cover --min_coverage 100 --verbose
