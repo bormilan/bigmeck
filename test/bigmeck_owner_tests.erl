@@ -2,6 +2,10 @@
 
 -include_lib("eunit/include/eunit.hrl").
 
+-doc """
+Verify that a competing owner exits when the named ETS table already exists
+and that initialization returns the existing table without changing its owner.
+""".
 concurrent_owner_creation_test() ->
     Table = ets:new(bigmeck_expectations, [named_table, public]),
     try
@@ -13,6 +17,9 @@ concurrent_owner_creation_test() ->
         ets:delete(Table)
     end.
 
+-doc """
+Verify that an abnormal owner exit during startup is reported with its reason.
+""".
 owner_start_failure_test() ->
     {Owner, Monitor} = spawn_monitor(fun() -> exit(start_failed) end),
     ?assertError(
@@ -20,6 +27,9 @@ owner_start_failure_test() ->
         bigmeck:await_table(Owner, Monitor, 1000)
     ).
 
+-doc """
+Verify that waiting for an unresponsive owner times out and removes the monitor.
+""".
 owner_start_timeout_test() ->
     {Owner, Monitor} = spawn_monitor(fun() -> timer:sleep(infinity) end),
     try
@@ -29,6 +39,10 @@ owner_start_timeout_test() ->
         stop_process(Owner)
     end.
 
+-doc """
+Verify that unload times out and removes its monitor when the ETS owner ignores
+the shutdown signal. Allow enough time for the five-second API timeout.
+""".
 unload_timeout_test_() ->
     {timeout, 10, fun unload_timeout/0}.
 

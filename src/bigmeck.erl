@@ -6,7 +6,7 @@ Store a binary request ID under the process dictionary atom 'x-request-id'
 when registering expectations and in each process calling a mocked function.
 """.
 
--export([expect/4, unload/0]).
+-export([expect/4, reset/0, delete/3, unload/0]).
 
 % Keep failure-path test access out of the public library API.
 -ifdef(TEST).
@@ -39,6 +39,49 @@ expect(Module, Function, Arity, ReturnValue) when
     true = ets:insert(Table, {{RequestId, Module, Function, Arity}, ReturnValue}),
     ok;
 expect(_Module, _Function, _Arity, _ReturnValue) ->
+    error(badarg).
+
+-doc """
+Delete all expectations for the current request ID, leaving other requests intact.
+
+Calls without a remaining entry pass through to the original function. Returns
+`ok` even if no expectations or shared ETS storage exist. Meck mocks are untouched.
+""".
+-spec reset() -> Return when
+    Return :: ok.
+reset() ->
+    RequestId = request_id(),
+    case ets:whereis(?TABLE) of
+        undefined ->
+            ok;
+        Table ->
+            true = ets:match_delete(Table, {{RequestId, '_', '_', '_'}, '_'}),
+            ok
+    end.
+
+-doc """
+Delete the current request ID's expectation for a function and arity.
+
+Other requests and targets are unaffected. Subsequent calls pass through to the
+original function. Returns `ok` if the entry or shared ETS storage does not exist.
+""".
+-spec delete(Module, Function, Arity) -> Return when
+    Module :: module(),
+    Function :: atom(),
+    Arity :: 0..20,
+    Return :: ok.
+delete(Module, Function, Arity) when
+    is_atom(Module), is_atom(Function), is_integer(Arity), Arity >= 0, Arity =< 20
+->
+    RequestId = request_id(),
+    case ets:whereis(?TABLE) of
+        undefined ->
+            ok;
+        Table ->
+            true = ets:delete(Table, {RequestId, Module, Function, Arity}),
+            ok
+    end;
+delete(_Module, _Function, _Arity) ->
     error(badarg).
 
 -doc "Stop the ETS owner and discard its table, leaving Meck mocks untouched.".
