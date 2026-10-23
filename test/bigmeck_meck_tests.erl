@@ -2,6 +2,10 @@
 
 -include_lib("eunit/include/eunit.hrl").
 
+-doc """
+Verify that a Meck expectation returns its configured value, validates
+successfully, and restores the original function when the mock is unloaded.
+""".
 mock_lifecycle_test() ->
     ok = meck:new(bigmeck_test_target, [passthrough]),
     try
@@ -13,6 +17,10 @@ mock_lifecycle_test() ->
     end,
     ?assertEqual(original, bigmeck_test_target:fun_a()).
 
+-doc """
+Verify that Meck passthrough preserves the original behavior and arguments of
+functions without an expectation while another function is mocked.
+""".
 passthrough_test() ->
     ok = meck:new(bigmeck_test_target, [passthrough]),
     try
@@ -22,6 +30,10 @@ passthrough_test() ->
         ok = meck:unload(bigmeck_test_target)
     end.
 
+-doc """
+Verify that Meck rejects passthrough when the target's abstract code is missing.
+Restore the original BEAM file after checking the failure.
+""".
 passthrough_requires_debug_info_test() ->
     Target = bigmeck_no_debug_info_target,
     BeamFile = code:which(Target),
